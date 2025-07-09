@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoyageAI | Your Personal Trip Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-image: url('https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=2070&auto=format&fit=crop');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+        .backdrop-blur-xl {
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
+        .card-enter {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-800">
+
+    <div class="min-h-screen flex flex-col items-center justify-center p-4">
+        <main class="w-full max-w-4xl mx-auto">
+            <!-- Header -->
+            <header class="text-center mb-8">
+                <h1 class="text-5xl font-bold text-white shadow-lg">VoyageAI</h1>
+                <p class="text-gray-200 mt-2 text-lg">Let AI plan your next adventure.</p>
+            </header>
+
+            <!-- Form Container -->
+            <div class="bg-white/80 backdrop-blur-xl p-8 rounded-2xl shadow-2xl border border-white/20">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div>
+                        <label for="destination" class="block text-sm font-medium text-gray-700 mb-1">Destination</label>
+                        <input type="text" id="destination" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" placeholder="e.g., Paris, France">
+                    </div>
+                    <div>
+                        <label for="duration" class="block text-sm font-medium text-gray-700 mb-1">Duration (days)</label>
+                        <input type="number" id="duration" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" placeholder="e.g., 7">
+                    </div>
+                    <div>
+                        <label for="interests" class="block text-sm font-medium text-gray-700 mb-1">Interests</label>
+                        <input type="text" id="interests" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" placeholder="e.g., History, Food, Art">
+                    </div>
+                </div>
+                <button id="plan-trip-btn" class="w-full bg-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-700 transition-all duration-300 shadow-lg flex items-center justify-center space-x-2">
+                    <span id="button-text">Plan My Trip</span>
+                </button>
+            </div>
+
+            <!-- Output Area -->
+            <div id="itinerary-output" class="mt-10">
+                <!-- Loading Spinner -->
+                <div id="loading-spinner" class="text-center text-white hidden">
+                    <svg class="animate-spin mx-auto h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p class="mt-4">Crafting your perfect journey...</p>
+                </div>
+                <!-- Itinerary container -->
+                 <div id="itinerary-container" class="space-y-6"></div>
+                 <!-- Error message -->
+                 <div id="error-message" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative hidden" role="alert"></div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module">
+        const planTripBtn = document.getElementById('plan-trip-btn');
+        const buttonText = document.getElementById('button-text');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const itineraryContainer = document.getElementById('itinerary-container');
+        const errorMessage = document.getElementById('error-message');
+
+        let isLoading = false;
+
+        planTripBtn.addEventListener('click', handlePlanTrip);
+
+        async function handlePlanTrip() {
+            if (isLoading) return;
+
+            const destination = document.getElementById('destination').value;
+            const duration = document.getElementById('duration').value;
+            const interests = document.getElementById('interests').value;
+
+            if (!destination || !duration || !interests) {
+                showError("Please fill in all fields to plan your trip.");
+                return;
+            }
+
+            setLoading(true);
+
+            // Define the JSON schema for the expected response from the AI
+            const schema = {
+                type: "OBJECT",
+                properties: {
+                    itinerary: {
+                        type: "ARRAY",
+                        items: {
+                            type: "OBJECT",
+                            properties: {
+                                day: { type: "NUMBER" },
+                                title: { type: "STRING" },
+                                activities: {
+                                    type: "ARRAY",
+                                    items: {
+                                        type: "OBJECT",
+                                        properties: {
+                                            time: { type: "STRING" },
+                                            description: { type: "STRING" }
+                                        },
+                                        required: ["time", "description"]
+                                    }
+                                }
+                            },
+                            required: ["day", "title", "activities"]
+                        }
+                    }
+                },
+                required: ["itinerary"]
+            };
+
+            const prompt = `
+                Create a detailed travel itinerary for a trip to ${destination} for ${duration} days.
+                The traveler is interested in ${interests}.
+                For each day, provide a creative title and a list of activities with suggested times (e.g., "Morning", "Afternoon", "Evening").
+                Respond ONLY with the JSON object described by the schema. Do not include any other text or markdown formatting.
+            `;
+
+            try {
+                const chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+                const payload = {
+                    contents: chatHistory,
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: schema,
+                    }
+                };
+                const apiKey = ""; // Leave empty
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API request failed with status ${response.status}. Please try again.`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates[0]?.content?.parts[0]?.text) {
+                    const jsonText = result.candidates[0].content.parts[0].text;
+                    const parsedJson = JSON.parse(jsonText);
+                    renderItinerary(parsedJson.itinerary);
+                } else {
+                    throw new Error("The AI returned an unexpected response. Please try again.");
+                }
+
+            } catch (error) {
+                console.error("Error:", error);
+                showError(error.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function renderItinerary(itinerary) {
+            itineraryContainer.innerHTML = '';
+            itinerary.forEach((day, index) => {
+                const dayCard = document.createElement('div');
+                dayCard.className = 'bg-white/80 backdrop-blur-xl p-6 rounded-xl shadow-lg border border-white/20 card-enter';
+                dayCard.style.transitionDelay = `${index * 100}ms`;
+
+                let activitiesHtml = '<ul class="space-y-4 mt-4">';
+                day.activities.forEach(activity => {
+                    activitiesHtml += `
+                        <li class="flex items-start">
+                            <div class="bg-purple-500 text-white text-sm font-bold rounded-full px-3 py-1 mr-4">${activity.time}</div>
+                            <p class="text-gray-700">${activity.description}</p>
+                        </li>
+                    `;
+                });
+                activitiesHtml += '</ul>';
+
+                dayCard.innerHTML = `
+                    <h3 class="text-2xl font-bold text-gray-800">Day ${day.day}: ${day.title}</h3>
+                    ${activitiesHtml}
+                `;
+                itineraryContainer.appendChild(dayCard);
+                // Trigger the animation
+                setTimeout(() => dayCard.style.opacity = 1, 50);
+                setTimeout(() => dayCard.style.transform = 'translateY(0)', 50);
+            });
+        }
+
+        function setLoading(loading) {
+            isLoading = loading;
+            if (loading) {
+                planTripBtn.disabled = true;
+                buttonText.textContent = 'Generating...';
+                loadingSpinner.classList.remove('hidden');
+                itineraryContainer.innerHTML = '';
+                errorMessage.classList.add('hidden');
+            } else {
+                planTripBtn.disabled = false;
+                buttonText.textContent = 'Plan My Trip';
+                loadingSpinner.classList.add('hidden');
+            }
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+
+    </script>
+</body>
+</html>
